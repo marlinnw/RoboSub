@@ -1,0 +1,20 @@
+# ---- colcon build output ----
+build/
+install/
+log/
+
+# ---- recorded data ----
+*.mcap
+*.db3
+*.mp4
+
+# ----Python byproducts ----
+__pycache__/
+*.pyc
+*.egg-info/
+
+# ----editor / OS clutter ----
+.vscode/*
+!.vscode/c_cpp_properties.json
+*.swp
+.DS_Store
