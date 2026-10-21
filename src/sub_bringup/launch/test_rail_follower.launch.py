@@ -22,5 +22,13 @@ def generate_launch_description():
         TimerAction(period=1.0, actions=[send('/camera/command',            CAMERA_COMMAND)]),
         TimerAction(period=2.0, actions=[send('/color_filter/lab/command',  'activate')]),
         TimerAction(period=3.0, actions=[send('/rail_detector/command',     'activate')]),
-        TimerAction(period=4.0, actions=[send('/rail_follower/command', '   activate')])
+        TimerAction(period=4.0, actions=[send('/rail_follower/command', '   activate')]),
+
+        TimerAction(period=5.0,
+            actions=[ExecuteProcess(
+                cmd=['gnome-terminal', '--', 'ros2', 'topic', 'echo', '/cmd_effort'],
+                output='screen'
+                    )
+                ]
+            )
     ])
