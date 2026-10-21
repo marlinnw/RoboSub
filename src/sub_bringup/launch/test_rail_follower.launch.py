@@ -18,17 +18,13 @@ def generate_launch_description():
         Node(package='sub_py', executable='lab_filter', output='screen'),
         Node(package='sub_py', executable='rail_detector', output='screen'),
         Node(package='sub_py', executable='rail_follower', output='screen'),
+        Node(package='sub_py', executable='controller_input', output='screen',
+             parameters=[{
+                 'autonomy_command_topic' : '/rail_follower/command'}]),
 
-        TimerAction(period=1.0, actions=[send('/camera/command',            CAMERA_COMMAND)]),
-        TimerAction(period=2.0, actions=[send('/color_filter/lab/command',  'activate')]),
-        TimerAction(period=3.0, actions=[send('/rail_detector/command',     'activate')]),
-        TimerAction(period=4.0, actions=[send('/rail_follower/command', '   activate')]),
 
-        TimerAction(period=5.0,
-            actions=[ExecuteProcess(
-                cmd=['gnome-terminal', '--', 'ros2', 'topic', 'echo', '/cmd_effort'],
-                output='screen'
-                    )
-                ]
-            )
+        TimerAction(period=1.0, actions=[send('/controller_input/command', 'activate')]),
+        TimerAction(period=2.0, actions=[send('/camera/command',            CAMERA_COMMAND)]),
+        TimerAction(period=3.0, actions=[send('/color_filter/lab/command',  'activate')]),
+        TimerAction(period=4.0, actions=[send('/rail_detector/command',     'activate')])
     ])

@@ -2,14 +2,23 @@ import math
 import rclpy
 from rclpy.node import Node
 from rclpy.executors import ExternalShutdownException
+from rclpy.qos import QoSProfile, DurabilityPolicy, ReliabilityPolicy          
 from geometry_msgs.msg import PointStamped, Twist
 from std_msgs.msg import String
+
+LATCHED = QoSProfile(depth=1,                                                   
+                     durability=DurabilityPolicy.TRANSIENT_LOCAL,
+                     reliability=ReliabilityPolicy.RELIABLE)
+
 
 def clamp(x):
     return max(-1.0, min(1.0, x))
 
+
 class RailFollower(Node):
 
+    NAME = 'rail_follower'                                                      
+    MANUAL = 'manual'                                                           
     ACTIVATE = 'activate'
     DEACTIVATE = 'deactivate'
 
@@ -17,31 +26,31 @@ class RailFollower(Node):
         super().__init__('rail_follower')
 
         self.declare_parameter('image_width', 320)          # pixels
-        self.declare_parameter('kp_sway', 0.8)              # sideways  effort per unit off center
+        self.declare_parameter('kp_sway', 0.8)              # sideways effort per unit off center
         self.declare_parameter('kp_yaw', 0.02)              # turning effort per degree of angle
         self.declare_parameter('surge', 0.4)                # forward effort when lined up
         self.declare_parameter('x_limit', 0.5)              # this far off center -> forward drops to 0
         self.declare_parameter('angle_limit', 30.0)         # this many degrees off -> forward drops to 0
         self.declare_parameter('alpha', 0.3)                # smoothing: 1 = none, lower = smoother but lags more
-        self.declare_parameter('lost_timeout', 1.0)         # seconds of silence from the detect -> hover
+        self.declare_parameter('lost_timeout', 1.0)         # seconds of silence from the detector -> hover
 
-        self.active         = False
-        self.x_smooth       = None
-        self.angle_smooth   = None
-        self.target_time    = None
+        self.active       = False
+        self.owner        = ''                              
+        self.x_smooth     = None
+        self.angle_smooth = None
+        self.target_time  = None
 
-        self.command_sub    = self.create_subscription(String, '/rail_follower/command', self.on_command, 10)
-        self.target_sub     = self.create_subscription(PointStamped, '/rail_detector/target', self.on_target, 10)
-        self.cmd_pub        = self.create_publisher(Twist, '/cmd_effort', 10)
-        self.status_pub     = self.create_publisher(String, '/rail_follower/status', 10)
+        self.command_sub = self.create_subscription(String, '/rail_follower/command', self.on_command, 10)
+        self.target_sub  = self.create_subscription(PointStamped, '/rail_detector/target', self.on_target, 10)
+        self.owner_sub   = self.create_subscription(String, '/control_command/active', self.on_owner, LATCHED)   
+        self.owner_pub   = self.create_publisher(String, '/control_command/active', LATCHED)                     
+        self.cmd_pub     = self.create_publisher(Twist, '/cmd_effort', 10)
+        self.status_pub  = self.create_publisher(String, '/rail_follower/status', 10)
 
         self.create_timer(0.05, self.step)
 
-
-
     def p(self, name):
         return self.get_parameter(name).value
-
 
     def on_command(self, msg):
         command = msg.data.strip().lower()
@@ -53,29 +62,39 @@ class RailFollower(Node):
         else:
             self.get_logger().warn(f'Unrecognized command: {msg.data}')
 
+    def on_owner(self, msg):                                                    
+        self.owner = msg.data                               
+        if self.active and msg.data != self.NAME:
+            self.get_logger().info(f'"{msg.data}" took control. Rail follower deactivating.')
+            self.deactivate(announce=False)                 
 
     def activate(self):
         if self.active:
-            self.get_logger().info('Rail follower already active. Ignoring Command')
+            self.get_logger().info('Rail follower already active. Ignoring command')
+            return
+        if self.owner == self.MANUAL:                                           
+            self.get_logger().warn('Manual control is active. Release it on the controller first.')
+            self.status_pub.publish(String(data='refused'))
             return
 
         self.x_smooth = None
         self.angle_smooth = None
         self.active = True
+        self.owner_pub.publish(String(data=self.NAME))      
         self.get_logger().info('Rail follower: ACTIVE')
         self.status_pub.publish(String(data='active'))
 
-    def deactivate(self):
+    def deactivate(self, announce=True):                                        
         if not self.active:
             self.get_logger().info('Rail follower already inactive. Ignoring command')
             return
 
         self.active = False
-        self.cmd_pub.publish(Twist())
-        self.get_logger().info('Rail follwer: INACTIVE')
+        if announce:                                       
+            self.cmd_pub.publish(Twist())                   
+            self.owner_pub.publish(String(data=''))         
+        self.get_logger().info('Rail follower: INACTIVE')
         self.status_pub.publish(String(data='inactive'))
-
-
 
     def on_target(self, msg):
         if math.isnan(msg.point.x):
@@ -125,7 +144,6 @@ class RailFollower(Node):
         self.cmd_pub.publish(cmd)
 
 
-
 def main(args=None):
     rclpy.init(args=args)
     node = RailFollower()
@@ -136,3 +154,7 @@ def main(args=None):
     finally:
         node.destroy_node()
         rclpy.try_shutdown()
+
+
+if __name__ == '__main__':
+    main()

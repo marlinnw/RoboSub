@@ -18,6 +18,7 @@ class ControllerInput(Node):
     DEACTIVATE = 'deactivate'
     DEADMAN_BUTTON = 9
     RELEASE_BUTTON = 6
+    AUTONOMY_BUTTON = 4
 
 
 
@@ -26,6 +27,7 @@ class ControllerInput(Node):
 
         self.active = False
         self.in_control = False
+        self.prev_autonomy = 0
 
         self.command_sub        = self.create_subscription(String, '/controller_input/command', self.on_command, 10)
         self.status_pub         = self.create_publisher(String, '/controller_input/status', 10)
@@ -33,6 +35,16 @@ class ControllerInput(Node):
         self.owner_pub          = self.create_publisher(String, '/control_command/active', LATCHED)
         self.joy_sub            = self.create_subscription(Joy, '/joy', self.on_joy, 10)
         self.cmd_pub            = self.create_publisher(Twist, '/cmd_effort', 10)
+
+        self.declare_parameter('autonomy_command_topic', '')     
+
+        topic = self.get_parameter('autonomy_command_topic').value
+        if topic:                                                  
+            self.autonomy_pub = self.create_publisher(String, topic, 10)
+            self.get_logger().info(f'Select button hands off to: {topic}')
+        else:
+            self.autonomy_pub = None
+            self.get_logger().info('No autonomy_command_topic set: Select button disabled')
 
         self.timeout = 2.0
         self.last_joy_time = None
@@ -115,6 +127,19 @@ class ControllerInput(Node):
         if self.signal_lost:
             self.signal_lost = False
             self.get_logger().info("Controller signal restored")
+
+        autonomy_now = msg.buttons[self.AUTONOMY_BUTTON]
+        autonomy_pressed = autonomy_now and not self.prev_autonomy
+        self.prev_autonomy = autonomy_now
+
+        if autonomy_pressed:
+                    if self.in_control:
+                        self.get_logger().info('Manual control still active. Must release to start autonomous control')
+                    elif self.autonomy_pub is None:
+                        self.get_logger().warn('No autonomy_command_topic set. Select button does nothing.')
+                    else:
+                        self.autonomy_pub.publish(String(data='activate'))
+                        self.get_logger().info('Autonomy requested')
 
         deadman = msg.buttons[self.DEADMAN_BUTTON]
 
