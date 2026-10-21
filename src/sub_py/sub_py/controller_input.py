@@ -16,6 +16,8 @@ class ControllerInput(Node):
     NAME = 'manual'
     ACTIVATE = 'activate'
     DEACTIVATE = 'deactivate'
+    DEADMAN_BUTTON = 9
+    RELEASE_BUTTON = 6
 
 
 
@@ -29,7 +31,7 @@ class ControllerInput(Node):
         self.owner_sub          = self.create_subscription(String, '/control_command/active', self.on_owner, LATCHED)
         self.owner_pub          = self.create_publisher(String, '/control_command/active', LATCHED)
 
-        self.controller_input   = self.create_subscription(Joy, '/joy', self.on_joy, 10)
+        self.joy_sub   = self.create_subscription(Joy, '/joy', self.on_joy, 10)
 
         self.cmd_pub            = self.create_publisher(Twist, '/cmd_effort', 10)
 
@@ -41,7 +43,7 @@ class ControllerInput(Node):
         
         if command == self.ACTIVATE:
             self.activate()
-        elif comand == self.DEACTIVATE:
+        elif command == self.DEACTIVATE:
             self.deactivate()
         else:
             self.get_logger().warn(f'Unrecognized command: {msg.data}')
@@ -51,7 +53,7 @@ class ControllerInput(Node):
     def on_owner(self, msg):
         if self.active and msg.data != self.NAME:
             self.get_logger().info(f'"{msg.data}" controller took over. Deactivating')
-            self.deactivate(annonce=False)
+            self.deactivate(announce=False)
 
 
 
@@ -86,24 +88,24 @@ class ControllerInput(Node):
         if not self.active:
             return
         
-        if len(msg.axes) < 8 or len(msg.buttons) < 11:
+        if len(msg.axes) < 6 or len(msg.buttons) < 11:
             return
+
+        if not msg.buttons[self.DEADMAN_BUTTON]:
+            return
+
+        
 
         twist = Twist()
 
-        twist.linear.x = self.apply_deadzone(msg.axes[1])
-        twist.linear.y = self.apply_deadzone(msg.axes[0])
+        twist.linear.x = self.apply_deadzone(msg.axes[1]) # Forward and back
+        twist.linear.y = self.apply_deadzone(msg.axes[0]) # left and right
 
-        left_trigger = (1.0 - msg.axes[2]) / 2.0
+        left_trigger = (1.0 - msg.axes[4]) / 2.0
         right_trigger = (1.0 - msg.axes[5]) / 2.0
-        twist.linear.z = right_trigger - left_trigger
+        twist.linear.z = right_trigger - left_trigger # up and down
 
-        twist.angular.x = self.apply_deadzone(msg.axes[3])
-        twist.angular.y = self.apply_deadzone(msg.axes[4])
-
-        left_bumper = mg.buttons[4]
-        right_bumber = msg.buttons[5]
-        twist.angular.z = float(right_bumber - left_bumper)
+        twist.angular.z = self.apply_deadzone(msg.axes[2])
 
         self.cmd_pub.publish(twist)
 
