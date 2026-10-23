@@ -2,7 +2,7 @@ from launch import LaunchDescription
 from launch.actions import ExecuteProcess, TimerAction
 from launch_ros.actions import Node
 
-CAMERA_COMMAND = 'activate 0 30'
+CAMERA_COMMAND = 'activate csi0 30'
 
 def send(topic, text):
     return ExecuteProcess(

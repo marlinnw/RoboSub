@@ -2,7 +2,7 @@ from launch import LaunchDescription
 from launch.actions import ExecuteProcess, TimerAction
 from launch_ros.actions import Node
 
-CAMERA_COMMAND = 'activate 0 30'
+CAMERA_COMMAND = 'activate csi0 30'
 
 def send(topic, text):
     return ExecuteProcess(
@@ -18,10 +18,6 @@ def generate_launch_description():
         Node(package='sub_py', executable='lab_filter', output='screen'),
         Node(package='sub_py', executable='rail_detector', output='screen'),
         Node(package='sub_py', executable='rail_follower', output='screen'),
-        Node(package='sub_py', executable='controller_input', output='screen',
-             parameters=[{
-                 'autonomy_command_topic' : '/rail_follower/command'}]),
-
 
         TimerAction(period=1.0, actions=[send('/controller_input/command', 'activate')]),
         TimerAction(period=2.0, actions=[send('/camera/command',            CAMERA_COMMAND)]),
