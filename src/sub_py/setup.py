@@ -24,6 +24,7 @@ setup(
     },
     entry_points={
         'console_scripts': [
+            'ardusub_bridge     = sub_py.ardusub_bridge:main',
             'controller_input   = sub_py.controller_input:main',
             'depth_publisher    = sub_py.depth_publisher:main',
             'depth_monitor      = sub_py.depth_monitor:main',
