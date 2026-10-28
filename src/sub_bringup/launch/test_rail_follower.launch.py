@@ -14,7 +14,6 @@ def send(topic, text):
 
 def generate_launch_description():
     return LaunchDescription([
-        Node(package='joy',     executable='game_controller_node',  output='screen`'),
         Node(package='sub_py',  executable='controller_input',      output='screen',
              parameters=[{'autonomy_command_topic': '/rail_follower/command'}]),
         Node(package='sub_py',  executable='camera_publisher',      output='screen',
