@@ -47,8 +47,7 @@ class RailDetector(Node):
         self.status_pub               = self.create_publisher(String, '/rail_detector/status', 10)
         self.target_pub               = self.create_publisher(PointStamped, '/rail_detector/target', 10)
         self.annotated_pub            = self.create_publisher(Image, '/rail_detector/image_annotated', 10)
-        self.annotated_pub_compressed = self.create_publisher(CompressedImage,
-                                                              '/rail_detector/image_annotated/compressed', 10)
+        self.annotated_pub_compressed = self.create_publisher(CompressedImage, '/rail_detector/image_annotated/compressed', 10)
 
         self.timeout = 2.0
         self.last_img_time = None

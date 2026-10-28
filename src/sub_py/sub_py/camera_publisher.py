@@ -30,12 +30,18 @@ class CameraPublisher(Node):
 
     ACTIVATE = "activate"
     DEACTIVATE = "deactivate"
+    ROTATIONS = {
+        90: cv.ROTATE_90_CLOCKWISE,
+        180: cv.ROTATE_180,
+        270: cv.ROTATE_90_COUNTERCLOCKWISE
+    }
 
     def __init__(self):
         super().__init__("camera_publisher")
 
         self.declare_parameter('jpeg_quality', 70)
         self.declare_parameter('show_window', False)
+        self.declare_parameter('rotate', 0)
 
         self.active = False
         self.cap = None
@@ -140,6 +146,10 @@ class CameraPublisher(Node):
 
         if frame.shape[1] != WIDTH or frame.shape[0] != HEIGHT:     # some USB cameras ignore the size request
             frame = cv.resize(frame, (WIDTH, HEIGHT))
+
+        rotation = self.ROTATIONS.get(int(self.p('rotate')))
+        if rotation is not None:
+            frame = cv.rotate(frame, rotation)
 
         stamp = self.get_clock().now().to_msg()
 
