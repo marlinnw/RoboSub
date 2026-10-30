@@ -1,3 +1,27 @@
+"""rail_detector.py -- finds the rail in the color-filtered image.
+
+Takes the output of a color filter (e.g. lab_filter), where everything that is
+not rail-colored has been blacked out, and finds the largest blob within the
+allowed area range. Publishes that blob's center and the direction of its
+long axis for rail_follower to steer on.
+
+COMMAND  /rail_detector/command   std_msgs/String  "activate" / "deactivate"
+INPUT    /color_filter/image_filtered  sensor_msgs/Image
+         /color_filter/active     std_msgs/String  (latched) which filter is feeding us
+OUTPUT   /rail_detector/target    geometry_msgs/PointStamped
+             x = blob center column (pixels), y = row (pixels)
+             z = rail angle (deg): 0 = straight up the image, + = top leans right
+             all NaN = running but no rail in view
+         /rail_detector/image_annotated             sensor_msgs/Image            (only when someone subscribes)
+         /rail_detector/image_annotated/compressed  sensor_msgs/CompressedImage  (only when someone subscribes)
+         /rail_detector/status    std_msgs/String  "active" / "inactive"
+
+Deactivates itself if no filtered images arrive for 2 s.
+
+Example:
+  ros2 topic pub --once /rail_detector/command std_msgs/String "{data: 'activate'}"
+"""
+
 import cv2 as cv
 import numpy as np
 import rclpy
@@ -10,6 +34,7 @@ from sensor_msgs.msg import Image, CompressedImage
 from std_msgs.msg import String
 from geometry_msgs.msg import PointStamped
 
+# "Latched" QoS: late subscribers still receive the last message published
 LATCHED = QoSProfile(depth=1,
                      durability=DurabilityPolicy.TRANSIENT_LOCAL,
                      reliability=ReliabilityPolicy.RELIABLE)
@@ -22,6 +47,7 @@ def slider(low, high):
 
 
 class RailDetector(Node):
+    """Blob-based rail detector that publishes the rail's position and angle."""
 
     WINDOW = 'Rail Detector'
     ACTIVATE = 'activate'
@@ -31,15 +57,15 @@ class RailDetector(Node):
         super().__init__('rail_detector')
 
         # Tune live with:  ros2 param set /rail_detector min_area 3000   (or rqt_reconfigure)
-        self.declare_parameter('min_area', 2614, slider(0, 20000))
+        self.declare_parameter('min_area', 2614, slider(0, 20000))        # smaller blobs = noise
         self.declare_parameter('max_area', 30000, slider(20000, 76800))   # 76800 = 320 x 240
         self.declare_parameter('jpeg_quality', 70, slider(1, 100))
         self.declare_parameter('show_window', False)                      # true on a desk, false on the Jetson
 
         self.active = False
-        self.show_image = False
+        self.show_image = False         # snapshot of show_window taken at activate()
         self.bridge = CvBridge()
-        self.source = ''
+        self.source = ''                # name of the color filter currently publishing (for logs)
 
         self.command_sub              = self.create_subscription(String, '/rail_detector/command', self.on_command, 10)
         self.image_sub                = self.create_subscription(Image, '/color_filter/image_filtered', self.on_img, 10)
@@ -49,16 +75,26 @@ class RailDetector(Node):
         self.annotated_pub            = self.create_publisher(Image, '/rail_detector/image_annotated', 10)
         self.annotated_pub_compressed = self.create_publisher(CompressedImage, '/rail_detector/image_annotated/compressed', 10)
 
+        # Watchdog: deactivate if the filter stops sending images
         self.timeout = 2.0
         self.last_img_time = None
         self.create_timer(0.5, self.watchdog)
 
     def p(self, name):
+        """Current value of a parameter (read every time so live changes work)."""
         return self.get_parameter(name).value
 
     # ---------- commands ----------
 
     def on_command(self, msg):
+        """Handle a message on /rail_detector/command.
+
+        Expected format (std_msgs/String, case and surrounding spaces ignored):
+            "activate"    start processing filtered images
+            "deactivate"  stop processing
+
+        e.g. ros2 topic pub --once /rail_detector/command std_msgs/String "{data: 'activate'}"
+        """
         command = msg.data.strip().lower()
         if not command:
             return
@@ -70,10 +106,12 @@ class RailDetector(Node):
             self.get_logger().warn(f'Unrecognized command: {msg.data}')
 
     def on_owner(self, msg):
+        """Remember which color filter is feeding /color_filter/image_filtered."""
         self.source = msg.data
         self.get_logger().info(f'Filter source: {self.source or "none"}')
 
     def activate(self):
+        """Start processing filtered images."""
         if self.active:
             self.get_logger().info('Rail detector already active. Ignoring command.')
             return
@@ -82,23 +120,26 @@ class RailDetector(Node):
         if self.show_image:
             cv.namedWindow(self.WINDOW)
 
+        # Give the watchdog a fresh start so it doesn't trip immediately
         self.last_img_time = self.get_clock().now()
         self.active = True
         self.get_logger().info(f'Rail detector: ACTIVE (filter source: {self.source or "none"})')
         self.status_pub.publish(String(data='active'))
 
     def deactivate(self):
+        """Stop processing images and close the preview window if open."""
         if not self.active:
             self.get_logger().info('Rail detector already inactive. Ignoring command.')
             return
         self.active = False
         if self.show_image:
             cv.destroyAllWindows()
-            cv.waitKey(1)
+            cv.waitKey(1)           # let OpenCV process the close event
         self.get_logger().info('Rail detector: INACTIVE')
         self.status_pub.publish(String(data='inactive'))
 
     def watchdog(self):
+        """Every 0.5 s: deactivate if no filtered image has arrived within the timeout."""
         if not self.active:
             return
         elapsed = (self.get_clock().now() - self.last_img_time).nanoseconds * 1e-9
@@ -109,6 +150,7 @@ class RailDetector(Node):
     # ---------- detection ----------
 
     def on_img(self, msg):
+        """Find the rail in one filtered frame and publish target + annotated image."""
         if not self.active:
             return
 
@@ -119,11 +161,13 @@ class RailDetector(Node):
         # Any non-black pixel = something the color filter kept
         mask = np.any(filtered > 0, axis=2).astype(np.uint8) * 255
 
+        # Outer outlines of each blob, keeping only those inside the area range
         min_area = self.p('min_area')
         max_area = self.p('max_area')
         contours, _ = cv.findContours(mask, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
         blobs = [c for c in contours if min_area <= cv.contourArea(c) <= max_area]
 
+        # Draw every accepted blob (green) labeled with its area -- handy for tuning min/max_area
         annotated = filtered.copy()
         cv.drawContours(annotated, blobs, -1, (0, 255, 0), 2)
         for c in blobs:                                            # each blob: its own area
@@ -135,18 +179,23 @@ class RailDetector(Node):
         target.header = msg.header                                 # keep the camera's capture time
 
         if blobs:
+            # Assume the biggest accepted blob is the rail
             biggest = max(blobs, key=cv.contourArea)
             m = cv.moments(biggest)
+            # Centroid = first-order moments / area
             cx = m['m10'] / m['m00']
             cy = m['m01'] / m['m00']
 
             # Long-axis direction from the 2nd-order moments
             theta = 0.5 * np.arctan2(2 * m['mu11'], m['mu20'] - m['mu02'])
             vx, vy = np.cos(theta), np.sin(theta)
+            # The axis has two opposite directions; image y grows downward,
+            # so flip if needed to always point UP the image.
             if vy > 0:                                             # point UP the image (toward the sub's nose)
                 vx, vy = -vx, -vy
             angle = float(np.degrees(np.arctan2(vx, -vy)))         # 0 = straight up, + = top leans right
 
+            # Centroid (red dot), axis (blue line), and angle label (yellow)
             cv.circle(annotated, (int(cx), int(cy)), 6, (0, 0, 255), -1)
             cv.line(annotated, (int(cx - 80 * vx), int(cy - 80 * vy)),
                                (int(cx + 80 * vx), int(cy + 80 * vy)), (255, 0, 0), 2)
@@ -186,6 +235,7 @@ class RailDetector(Node):
 
 
 def main(args=None):
+    """Entry point for 'ros2 run sub_py rail_detector'."""
     rclpy.init(args=args)
     node = RailDetector()
     try:

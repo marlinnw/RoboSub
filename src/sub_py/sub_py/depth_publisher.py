@@ -2,7 +2,7 @@
 
 What this node does
 -------------------
-Every 0,1 s (10 Hz) it makes up a depth reading that slowly bobs between
+Every 0.1 s (10 Hz) it makes up a depth reading that bobs between
 1.5 m and 2.5 m (a sine wave) and PUBLISHES it on the topic /depth
 
 Any other node --Python or C++, on this machine or across the network 
@@ -50,7 +50,8 @@ class DepthPublisher(Node):
         # We keep the reuturned object in self.pub so we can call .publish later
         self.pub = self.create_publisher(Float64, 'depth', 10)
 
-        # Simulated time in seconds
+        # Phase of the sine wave (radians). Advances by 1 per tick, so this is
+        # NOT seconds -- the wave repeats roughly every 6 ticks (~0.6 s).
         self.t = 0.0
 
         # Create a timer: ask ROS to call self.tick() every 0.1 s.
