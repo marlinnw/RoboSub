@@ -73,8 +73,8 @@ class ArduSubBridge(Node):
         self.command_sub    = self.create_subscription(String, '/ardusub_bridge/command', self.on_command, 10)
         self.status_pub     = self.create_publisher(String, '/ardusub_bridge/status', 10)
         self.effort_sub     = self.create_subscription(Twist, '/cmd_effort', self.on_effort, 10)
-        self.state_sub      = self.create_subscription(State, '/mavros/state', self.on_state, 10)
-        self.rc_pub         = self.create_publisher(OverrideRCIn, '/mavros/rc/override', 10)
+        self.state_sub      = self.create_subscription(State, '/mavros/mavros/state', self.on_state, 10)
+        self.rc_pub         = self.create_publisher(OverrideRCIn, '/mavros/mavros/rc/override', 10)
 
         # Send RC override at 20 Hz (does nothing while inactive)
         self.create_timer(0.05, self.step)
