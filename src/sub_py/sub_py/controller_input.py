@@ -232,10 +232,8 @@ class ControllerInput(Node):
 
         twist.linear.x = self.apply_deadzone(msg.axes[1]) # Forward and back
         twist.linear.y = self.apply_deadzone(msg.axes[0]) # left and right
-
-        # Triggers rest at +1.0 and read -1.0 when fully pulled; map each to 0..1
-        left_trigger = (1.0 - msg.axes[4]) / 2.0
-        right_trigger = (1.0 - msg.axes[5]) / 2.0
+        left_trigger = -self.apply_deadzone(msg.axes[4])
+        right_trigger = -self.apply_deadzone(msg.axes[5])
         twist.linear.z = right_trigger - left_trigger # up and down
 
         twist.angular.z = self.apply_deadzone(msg.axes[2])  # yaw
