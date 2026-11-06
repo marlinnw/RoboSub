@@ -35,7 +35,7 @@ LAPTOP_IP = '192.168.2.1'        # QGroundControl on the field laptop gets a cop
 # Camera
 CAMERA_DEVICE = 'csi0'           # 'csi0' = CSI ribbon camera, '0' = USB camera
 CAMERA_FPS = 30
-CAMERA_ROTATE = 90                # degrees clockwise (0, 90, 180, 270) -- set once you've checked the image
+CAMERA_ROTATE = 270               # degrees clockwise (0, 90, 180, 270) -- set once you've checked the image
 # <<< ------------------------------------------------------------------------
 
 # A 90/270 rotation makes the image portrait (240 wide instead of 320); the follower needs to know
